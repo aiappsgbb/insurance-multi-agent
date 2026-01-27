@@ -1,6 +1,6 @@
 name: shadcn-fastapi-starter
 metadata:
-  template: shadcn-fastapi-starter@0.0.1-beta
+  template: insurance-claims-multi-agents@1.0.0
 
 infra:
   provider: bicep
