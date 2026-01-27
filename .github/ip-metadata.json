@@ -1,0 +1,47 @@
+{
+  "name": "Insurance Claims Multi-Agents",
+  "description": "An agentic AI claims demo powered by advanced multi-agent systems (agent-framework + Azure OpenAI GPT-4.1) that streamlines the end-to-end insurance claims process. This proof-of-concept uses specialized AI agents to collaboratively assess claims and provide instant, transparent, explainable recommendations to claims processors. It augments human decision-making to accelerate handling from hours to minutes while improving consistency, transparency, and customer satisfaction.",
+  "maturity": "Bronze",
+  "region": "EMEA",
+  "industry": "Financial Services",
+  "owner": "alisoliman",
+  "pattern": [
+    "AI/ML",
+    "Application Innovation",
+    "Digital Transformation"
+  ],
+  "services": [
+    "Azure OpenAI",
+    "Azure Container Apps",
+    "Azure App Service",
+    "Azure Key Vault",
+    "Azure AI Search",
+    "Azure Storage"
+  ],
+  "tags": [
+    "Insurance",
+    "Claims",
+    "FSI",
+    "agentic",
+    "multi-agent",
+    "fraud",
+    "fraud detection"
+  ],
+  "version": "1.0.0",
+  "createdDate": "2026-01-27",
+  "lastUpdated": "2026-01-27",
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/aiappsgbb/insurance-multi-agent",
+    "branch": "main"
+  },
+  "documentation": {
+    "readme": "https://github.com/aiappsgbb/insurance-multi-agent/blob/main/README.md",
+    "architecture": "",
+    "demo": ""
+  },
+  "contacts": {
+    "technical": [],
+    "business": []
+  }
+}
