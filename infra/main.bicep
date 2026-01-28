@@ -83,6 +83,49 @@ module roleAssignment 'modules/role-assignment.bicep' = {
   ]
 }
 
+// Backend environment variables - conditionally include API key reference only if key is provided
+var backendEnvVarsBase = [
+  {
+    name: 'ENVIRONMENT'
+    value: 'production'
+  }
+  {
+    name: 'FRONTEND_ORIGIN'
+    value: 'https://${frontendContainerAppName}.${containerAppsStack.outputs.containerAppsEnvironmentDefaultDomain}'
+  }
+  {
+    name: 'AZURE_OPENAI_ENDPOINT'
+    value: azureOpenAIEndpoint
+  }
+  {
+    name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
+    value: azureOpenAIDeploymentName
+  }
+  {
+    name: 'AZURE_OPENAI_API_VERSION'
+    value: azureOpenAIApiVersion
+  }
+  {
+    name: 'AZURE_OPENAI_EMBEDDING_MODEL'
+    value: azureOpenAIEmbeddingModel
+  }
+]
+
+var backendEnvVarsWithApiKey = !empty(azureOpenAIApiKey) ? concat(backendEnvVarsBase, [
+  {
+    name: 'AZURE_OPENAI_API_KEY'
+    secretRef: 'azure-openai-api-key'
+  }
+]) : backendEnvVarsBase
+
+// Backend secrets - only include if API key is provided
+var backendSecrets = !empty(azureOpenAIApiKey) ? [
+  {
+    name: 'azure-openai-api-key'
+    value: azureOpenAIApiKey
+  }
+] : []
+
 // Deploy backend container app
 module backendContainerApp 'modules/containerapp.bicep' = {
   name: 'backend-container-app'
@@ -97,42 +140,8 @@ module backendContainerApp 'modules/containerapp.bicep' = {
     managedIdentityClientId: managedIdentity.properties.clientId
     tags: commonTags
     resourcePrefix: uniqueSuffix
-    environmentVariables: [
-      {
-        name: 'ENVIRONMENT'
-        value: 'production'
-      }
-      {
-        name: 'FRONTEND_ORIGIN'
-        value: 'https://${frontendContainerAppName}.${containerAppsStack.outputs.containerAppsEnvironmentDefaultDomain}'
-      }
-      {
-        name: 'AZURE_OPENAI_ENDPOINT'
-        value: azureOpenAIEndpoint
-      }
-      {
-        name: 'AZURE_OPENAI_API_KEY'
-        secretRef: 'azure-openai-api-key'
-      }
-      {
-        name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
-        value: azureOpenAIDeploymentName
-      }
-      {
-        name: 'AZURE_OPENAI_API_VERSION'
-        value: azureOpenAIApiVersion
-      }
-      {
-        name: 'AZURE_OPENAI_EMBEDDING_MODEL'
-        value: azureOpenAIEmbeddingModel
-      }
-    ]
-    secrets: [
-      {
-        name: 'azure-openai-api-key'
-        value: azureOpenAIApiKey
-      }
-    ]
+    environmentVariables: backendEnvVarsWithApiKey
+    secrets: backendSecrets
   }
   dependsOn: [
     containerAppsStack
