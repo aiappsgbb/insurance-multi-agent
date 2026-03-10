@@ -52,16 +52,16 @@ class PolicyVectorSearch:  # noqa: D101
     # ------------------------------------------------------------------
     def _init_embeddings(self):
         try:
-            from app.core.config import get_settings
+            from app.core.config import get_settings, get_token_provider
             settings = get_settings()
 
             self.embeddings = AzureOpenAIEmbeddings(
                 model=settings.azure_openai_embedding_model or "text-embedding-ada-002",
                 azure_endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
+                azure_ad_token_provider=get_token_provider(),
                 api_version="2024-02-01",
             )
-            logger.info("Azure OpenAI embeddings initialized")
+            logger.info("Azure OpenAI embeddings initialized (Entra ID auth)")
         except Exception as e:  # pragma: no cover
             logger.error("Failed to init embeddings: %s", e)
             raise

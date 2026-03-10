@@ -86,14 +86,30 @@ Cost Validation   Coverage Check    History Review
 
 
 ### Environment Configuration
+
+Authentication uses **Entra ID** (Azure AD) — no API keys needed.
+
+**Local development** — just sign in with the Azure CLI:
+```bash
+az login
+```
+
 Create a `.env` file in the backend directory:
 ```env
-AZURE_OPENAI_API_KEY=your_api_key_here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_DEPLOYMENT_NAME=llm-deployment-name(ex. gpt-4.1)
 AZURE_OPENAI_EMBEDDING_MODEL=embedding-model-deployment-name
 AZURE_OPENAI_API_VERSION=2025-04-01-preview
 ```
+
+> **Note:** Your Azure AD user must have the **Cognitive Services OpenAI User** role
+> on the Azure OpenAI resource. Assign it with:
+> ```bash
+> az role assignment create \
+>   --assignee <your-user-object-id> \
+>   --role "Cognitive Services OpenAI User" \
+>   --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<aoai-name>
+> ```
 
 ### Backend Setup
 ```bash
@@ -122,6 +138,10 @@ The frontend will be available at http://localhost:3000
 # Login to Azure
 azd auth login
 
+# Set required environment variables
+azd env set AZURE_OPENAI_ENDPOINT https://your-resource.openai.azure.com/
+azd env set AZURE_OPENAI_RESOURCE_ID /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<name>
+
 # Initialize and deploy
 azd up
 ```
@@ -130,8 +150,9 @@ This will:
 1. Create Azure Container Apps environment
 2. Set up container registry with managed identity
 3. Deploy both frontend and backend containers
-4. Configure networking and CORS policies
-5. Output the deployed application URLs
+4. Assign **Cognitive Services OpenAI User** role to the managed identity on your AOAI resource (even if it's in a different resource group)
+5. Configure networking and CORS policies
+6. Output the deployed application URLs
 
 ### Infrastructure
 The deployment creates:

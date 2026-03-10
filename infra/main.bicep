@@ -18,10 +18,6 @@ param projectName string = 'shadcn-fastapi'
 @description('Azure OpenAI endpoint URL')
 param azureOpenAIEndpoint string = ''
 
-@description('Azure OpenAI API key')
-@secure()
-param azureOpenAIApiKey string = ''
-
 @description('Azure OpenAI deployment name')
 param azureOpenAIDeploymentName string = 'gpt-4o'
 
@@ -30,6 +26,9 @@ param azureOpenAIApiVersion string = '2025-04-01-preview'
 
 @description('Azure OpenAI embedding model')
 param azureOpenAIEmbeddingModel string = 'text-embedding-3-large'
+
+@description('Resource ID of the Azure OpenAI account for RBAC (e.g. /subscriptions/.../resourceGroups/.../providers/Microsoft.CognitiveServices/accounts/...)')
+param azureOpenAIResourceId string = ''
 
 // Generate a short unique suffix for resource naming
 var uniqueSuffix = take(uniqueString(resourceGroup().id), 6)
@@ -83,6 +82,22 @@ module roleAssignment 'modules/role-assignment.bicep' = {
   ]
 }
 
+// Assign Cognitive Services OpenAI User role on the Azure OpenAI resource.
+// The AOAI resource may live in a different resource group (or even subscription);
+// we extract both subscription and RG from the full resource ID so the module
+// deploys into the correct scope.
+module openaiRoleAssignment 'modules/openai-role-assignment.bicep' = if (!empty(azureOpenAIResourceId)) {
+  name: 'openai-role-assignment'
+  scope: resourceGroup(split(azureOpenAIResourceId, '/')[2], split(azureOpenAIResourceId, '/')[4])
+  params: {
+    openAIResourceId: azureOpenAIResourceId
+    principalId: managedIdentity.properties.principalId
+  }
+  dependsOn: [
+    managedIdentity
+  ]
+}
+
 // Deploy backend container app
 module backendContainerApp 'modules/containerapp.bicep' = {
   name: 'backend-container-app'
@@ -111,10 +126,6 @@ module backendContainerApp 'modules/containerapp.bicep' = {
         value: azureOpenAIEndpoint
       }
       {
-        name: 'AZURE_OPENAI_API_KEY'
-        secretRef: 'azure-openai-api-key'
-      }
-      {
         name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
         value: azureOpenAIDeploymentName
       }
@@ -126,11 +137,9 @@ module backendContainerApp 'modules/containerapp.bicep' = {
         name: 'AZURE_OPENAI_EMBEDDING_MODEL'
         value: azureOpenAIEmbeddingModel
       }
-    ]
-    secrets: [
       {
-        name: 'azure-openai-api-key'
-        value: azureOpenAIApiKey
+        name: 'AZURE_CLIENT_ID'
+        value: managedIdentity.properties.clientId
       }
     ]
   }
@@ -173,5 +182,6 @@ output backendContainerAppFqdn string = backendContainerApp.outputs.fqdn
 output frontendContainerAppFqdn string = frontendContainerApp.outputs.fqdn
 output containerRegistryLoginServer string = containerAppsStack.outputs.containerRegistryLoginServer
 output managedIdentityClientId string = managedIdentity.properties.clientId
+output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output resourceGroupName string = resourceGroup().name
 

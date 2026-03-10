@@ -377,13 +377,15 @@ class ScenarioGenerator:
     def __init__(self):
         settings = get_settings()
         
-        if not settings.azure_openai_api_key or not settings.azure_openai_endpoint:
-            logger.warning("Azure OpenAI credentials not configured - generation will fail")
+        if not settings.azure_openai_endpoint:
+            logger.warning("Azure OpenAI endpoint not configured - generation will fail")
             self.client = None
             self.deployment = None
         else:
+            from app.core.config import get_token_provider
+
             self.client = AzureOpenAI(
-                api_key=settings.azure_openai_api_key,
+                azure_ad_token_provider=get_token_provider(),
                 api_version="2024-08-01-preview",
                 azure_endpoint=settings.azure_openai_endpoint,
             )

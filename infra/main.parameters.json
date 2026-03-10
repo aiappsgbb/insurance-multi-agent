@@ -20,9 +20,6 @@
         "azureOpenAIEndpoint": {
             "value": "${AZURE_OPENAI_ENDPOINT}"
         },
-        "azureOpenAIApiKey": {
-            "value": "${AZURE_OPENAI_API_KEY}"
-        },
         "azureOpenAIDeploymentName": {
             "value": "${AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o}"
         },
@@ -31,6 +28,9 @@
         },
         "azureOpenAIEmbeddingModel": {
             "value": "${AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-3-large}"
+        },
+        "azureOpenAIResourceId": {
+            "value": "${AZURE_OPENAI_RESOURCE_ID}"
         }
     }
 }

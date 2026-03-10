@@ -431,14 +431,17 @@ def analyze_image(
         # 2) Build multimodal ChatCompletion request.
         # ------------------------------------------------------------
         import openai  # lazy import to avoid mandatory dependency elsewhere
+        from app.core.config import get_settings, get_token_provider
+
+        settings = get_settings()
 
         client = openai.AzureOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            azure_endpoint=settings.azure_openai_endpoint,
+            azure_ad_token_provider=get_token_provider(),
             api_version="2024-02-15-preview",
         )
 
-        deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
+        deployment_name = settings.azure_openai_deployment_name or "gpt-4o"
 
         system_prompt = (
             "You are an insurance image analyst. "
