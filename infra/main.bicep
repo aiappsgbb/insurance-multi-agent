@@ -64,7 +64,7 @@ var cognitiveServicesAccountName = 'oai-${uniqueSuffix}'
 var managedIdentityName = 'id-${uniqueSuffix}'
 var backendContainerAppName = 'backend-${uniqueSuffix}'
 var frontendContainerAppName = 'frontend-${uniqueSuffix}'
-var postgresServerName = 'pgdb-${uniqueSuffix}'
+var postgresServerName = 'pgsql-${uniqueSuffix}'
 
 // Create managed identity for container registry access
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
