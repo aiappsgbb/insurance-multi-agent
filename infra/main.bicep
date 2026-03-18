@@ -35,7 +35,7 @@ param azureOpenAIResourceId string = ''
 param postgresAdminPassword string
 
 @description('PostgreSQL application database name')
-param postgresDbName string = 'claims_app'
+param postgresDbName string = 'citus'
 
 @description('Location override for PostgreSQL (some subscriptions restrict certain regions)')
 param postgresLocation string = 'westus2'
