@@ -36,7 +36,7 @@
             "value": "${POSTGRES_ADMIN_PASSWORD}"
         },
         "postgresDbName": {
-            "value": "${POSTGRES_DB_NAME=claims_app}"
+            "value": "${POSTGRES_DB_NAME=citus}"
         }
     }
 }
