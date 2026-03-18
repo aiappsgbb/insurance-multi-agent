@@ -38,6 +38,6 @@ resource cluster 'Microsoft.DBforPostgreSQL/serverGroupsv2@2023-03-02-preview' =
 // The application database must be created via a post-deployment SQL command:
 //   CREATE DATABASE ${databaseName};
 
-output serverFqdn string = '${serverName}.c.postgres.cosmos.azure.com'
+output serverFqdn string = cluster.properties.serverNames[0].fullyQualifiedDomainName
 output serverId string = cluster.id
 output databaseName string = databaseName
