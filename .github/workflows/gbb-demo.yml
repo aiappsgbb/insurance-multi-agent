@@ -138,6 +138,7 @@ jobs:
           AZURE_OPENAI_EMBEDDING_MODEL: ${{ secrets.AZURE_OPENAI_EMBEDDING_MODEL }}
           AZURE_OPENAI_RESOURCE_ID: ${{ vars.AZURE_OPENAI_RESOURCE_ID }}
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          SKIP_ROLE_ASSIGNMENT: ${{ vars.SKIP_ROLE_ASSIGNMENT || 'true' }}
 
       - name: Provision Infrastructure (Resource Group Scope)
         if: ${{ env.TARGET_SCOPE == 'resourceGroup' }}
@@ -151,6 +152,7 @@ jobs:
           AZURE_OPENAI_EMBEDDING_MODEL: ${{ secrets.AZURE_OPENAI_EMBEDDING_MODEL }}
           AZURE_OPENAI_RESOURCE_ID: ${{ vars.AZURE_OPENAI_RESOURCE_ID }}
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          SKIP_ROLE_ASSIGNMENT: ${{ vars.SKIP_ROLE_ASSIGNMENT || 'true' }}
 
       - name: Deploy Application
         run: azd deploy --no-prompt

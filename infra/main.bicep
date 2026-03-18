@@ -40,8 +40,11 @@ param postgresAdminPassword string
 @description('PostgreSQL application database name')
 param postgresDbName string = 'claims_app'
 
+@description('Skip RBAC assignment if already configured (avoids RoleAssignmentExists errors on re-deploy)')
+param skipRoleAssignment bool = false
+
 @description('Location override for PostgreSQL (some subscriptions restrict certain regions)')
-param postgresLocation string = 'eastus'
+param postgresLocation string = 'westus2'
 
 // Generate a short unique suffix for resource naming
 var uniqueSuffix = take(uniqueString(resourceGroup().id), 6)
@@ -130,7 +133,7 @@ module cognitiveServices 'modules/cognitive-services.bicep' = if (empty(azureOpe
 // The AOAI resource may live in a different resource group (or even subscription);
 // we extract both subscription and RG from the full resource ID so the module
 // deploys into the correct scope.
-module openaiRoleAssignment 'modules/openai-role-assignment.bicep' = if (!empty(azureOpenAIResourceId)) {
+module openaiRoleAssignment 'modules/openai-role-assignment.bicep' = if (!empty(azureOpenAIResourceId) && !skipRoleAssignment) {
   name: 'openai-role-assignment'
   scope: resourceGroup(split(azureOpenAIResourceId, '/')[2], split(azureOpenAIResourceId, '/')[4])
   params: {
