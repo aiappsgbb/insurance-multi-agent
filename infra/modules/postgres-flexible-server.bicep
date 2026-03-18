@@ -24,9 +24,9 @@ resource cluster 'Microsoft.DBforPostgreSQL/serverGroupsv2@2023-03-02-preview' =
   tags: tags
   properties: {
     administratorLoginPassword: administratorPassword
-    coordinatorServerEdition: 'BurstableMemoryOptimized'
+    coordinatorServerEdition: 'GeneralPurpose'
     coordinatorStorageQuotaInMb: 131072
-    coordinatorVCores: 2
+    coordinatorVCores: 4
     enableHa: false
     coordinatorEnablePublicIpAccess: true
     nodeCount: 0
