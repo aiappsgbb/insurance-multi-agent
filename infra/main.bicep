@@ -30,18 +30,12 @@ param azureOpenAIEmbeddingModel string = 'text-embedding-3-large'
 @description('Resource ID of the Azure OpenAI account for RBAC (e.g. /subscriptions/.../resourceGroups/.../providers/Microsoft.CognitiveServices/accounts/...)')
 param azureOpenAIResourceId string = ''
 
-@description('PostgreSQL administrator login')
-param postgresAdminLogin string = 'pgadmin'
-
-@description('PostgreSQL administrator password')
+@description('PostgreSQL administrator password (Cosmos DB for PostgreSQL always uses "citus" as login)')
 @secure()
 param postgresAdminPassword string
 
 @description('PostgreSQL application database name')
 param postgresDbName string = 'claims_app'
-
-@description('Skip RBAC assignment if already configured (avoids RoleAssignmentExists errors on re-deploy)')
-param skipRoleAssignment bool = false
 
 @description('Location override for PostgreSQL (some subscriptions restrict certain regions)')
 param postgresLocation string = 'westus2'
@@ -64,7 +58,7 @@ var cognitiveServicesAccountName = 'oai-${uniqueSuffix}'
 var managedIdentityName = 'id-${uniqueSuffix}'
 var backendContainerAppName = 'backend-${uniqueSuffix}'
 var frontendContainerAppName = 'frontend-${uniqueSuffix}'
-var postgresServerName = 'pgsql-${uniqueSuffix}'
+var postgresServerName = 'cosmos-pg-${uniqueSuffix}'
 
 // Create managed identity for container registry access
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -102,7 +96,6 @@ module postgresFlexibleServer 'modules/postgres-flexible-server.bicep' = {
     databaseName: postgresDbName
     location: postgresLocation
     tags: commonTags
-    administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
   }
 }
@@ -129,21 +122,9 @@ module cognitiveServices 'modules/cognitive-services.bicep' = if (empty(azureOpe
   }
 }
 
-// Assign Cognitive Services OpenAI User role on the Azure OpenAI resource.
-// The AOAI resource may live in a different resource group (or even subscription);
-// we extract both subscription and RG from the full resource ID so the module
-// deploys into the correct scope.
-module openaiRoleAssignment 'modules/openai-role-assignment.bicep' = if (!empty(azureOpenAIResourceId) && !skipRoleAssignment) {
-  name: 'openai-role-assignment'
-  scope: resourceGroup(split(azureOpenAIResourceId, '/')[2], split(azureOpenAIResourceId, '/')[4])
-  params: {
-    openAIResourceId: azureOpenAIResourceId
-    principalId: managedIdentity.properties.principalId
-  }
-  dependsOn: [
-    managedIdentity
-  ]
-}
+// NOTE: OpenAI role assignment removed — it was already assigned in a prior run.
+// If needed for a fresh deployment, run:
+//   az role assignment create --assignee <principalId> --role "Cognitive Services OpenAI User" --scope <openAIResourceId>
 
 // Deploy backend container app
 module backendContainerApp 'modules/containerapp.bicep' = {
@@ -194,7 +175,7 @@ module backendContainerApp 'modules/containerapp.bicep' = {
     secrets: [
       {
         name: 'database-url'
-        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgresFlexibleServer.outputs.serverFqdn}:5432/${postgresDbName}?ssl=require'
+        value: 'postgresql+asyncpg://citus:${postgresAdminPassword}@${postgresFlexibleServer.outputs.serverFqdn}:5432/${postgresDbName}?ssl=require'
       }
     ]
   }

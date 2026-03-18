@@ -32,9 +32,6 @@
         "azureOpenAIResourceId": {
             "value": "${AZURE_OPENAI_RESOURCE_ID}"
         },
-        "postgresAdminLogin": {
-            "value": "${POSTGRES_ADMIN_LOGIN=claimsadmin}"
-        },
         "postgresAdminPassword": {
             "value": "${POSTGRES_ADMIN_PASSWORD}"
         },
