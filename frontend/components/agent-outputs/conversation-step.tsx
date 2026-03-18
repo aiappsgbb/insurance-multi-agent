@@ -8,6 +8,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { 
   IconUser,
@@ -128,12 +133,48 @@ function hasToolResponses(content: string): boolean {
 // Parse tool calls from content
 function parseToolCalls(content: string): Array<{ name: string; args: Record<string, unknown> }> {
   const toolCalls: Array<{ name: string; args: Record<string, unknown> }> = []
+
+  if (content.includes('TOOL_CALL:')) {
+    const payload = content.split('TOOL_CALL:')[1]?.trim() || ''
+    const tryParse = (value: string) => {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return null
+      }
+    }
+    let parsed = tryParse(payload)
+    if (!parsed) {
+      const sanitized = payload
+        .replace(/None/g, 'null')
+        .replace(/True/g, 'true')
+        .replace(/False/g, 'false')
+        .replace(/'/g, '"')
+      parsed = tryParse(sanitized)
+    }
+    if (Array.isArray(parsed)) {
+      parsed.forEach((call) => {
+        const name = call?.name || call?.function?.name || 'tool'
+        const args = call?.arguments ?? call?.function?.arguments ?? {}
+        toolCalls.push({ name, args: typeof args === 'string' ? { raw: args } : args })
+      })
+      return toolCalls
+    }
+    if (parsed && typeof parsed === 'object') {
+      const name = (parsed as Record<string, unknown>).name || 'tool'
+      const args = (parsed as Record<string, unknown>).arguments ?? {}
+      toolCalls.push({ name: String(name), args: typeof args === 'string' ? { raw: args } : (args as Record<string, unknown>) })
+      return toolCalls
+    }
+    toolCalls.push({ name: 'tool', args: { raw: payload } })
+    return toolCalls
+  }
+
   const lines = content.split('\n')
-  
   let currentTool: string | null = null
   let argsBuffer: string[] = []
   let collectingArgs = false
-  
+
   const saveCurrentTool = () => {
     if (currentTool) {
       if (argsBuffer.length > 0) {
@@ -142,27 +183,23 @@ function parseToolCalls(content: string): Array<{ name: string; args: Record<str
           const args = JSON.parse(argsStr)
           toolCalls.push({ name: currentTool, args })
         } catch {
-          // If JSON parsing fails, show empty args
           toolCalls.push({ name: currentTool, args: {} })
         }
       } else {
-        // No arguments - tool was called without args
         toolCalls.push({ name: currentTool, args: {} })
       }
       argsBuffer = []
       collectingArgs = false
     }
   }
-  
+
   for (const line of lines) {
     const toolMatch = line.match(/🔧 Calling tool:\s*(\w+)/)
     if (toolMatch) {
-      // Save previous tool before starting new one
       saveCurrentTool()
       currentTool = toolMatch[1]
     } else if (line.trim().startsWith('Arguments:')) {
       collectingArgs = true
-      // Check if Arguments is inline: "Arguments: {...}"
       const inlineMatch = line.match(/Arguments:\s*(\{.*)/)
       if (inlineMatch) {
         argsBuffer.push(inlineMatch[1])
@@ -170,15 +207,12 @@ function parseToolCalls(content: string): Array<{ name: string; args: Record<str
     } else if (collectingArgs && line.trim()) {
       argsBuffer.push(line.trim())
     } else if (currentTool && !collectingArgs && line.trim() && line.trim().startsWith('{')) {
-      // Sometimes args come directly after tool name without "Arguments:" label
       collectingArgs = true
       argsBuffer.push(line.trim())
     }
   }
-  
-  // Don't forget the last tool
+
   saveCurrentTool()
-  
   return toolCalls
 }
 
@@ -206,6 +240,58 @@ function parseToolResponses(content: string): Array<{ name: string; result: unkn
 // Check if content is structured output format (like "- validity_status: QUESTIONABLE")
 function isStructuredOutput(content: string): boolean {
   return content.match(/^- \w+:/) !== null || content.match(/\n- \w+:/) !== null
+}
+
+function isJsonObject(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content.trim())
+    return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+  } catch {
+    return false
+  }
+}
+
+// Detect synthesis prompt: "=== AGENT_NAME ASSESSMENT ===" with JSON blocks
+function isSynthesisPrompt(content: string): boolean {
+  return content.includes('=== ') && content.includes(' ASSESSMENT ===')
+}
+
+interface SynthesisSection {
+  agentName: string
+  data: Record<string, unknown> | null
+  rawText: string | null
+}
+
+function parseSynthesisPrompt(content: string): { intro: string; sections: SynthesisSection[] } | null {
+  const sectionPattern = /===\s+(\w+)\s+ASSESSMENT\s+===\s*\n([\s\S]*?)(?=\n===|\s*$)/g
+  const sections: SynthesisSection[] = []
+  let match
+  while ((match = sectionPattern.exec(content)) !== null) {
+    const body = match[2].trim()
+    let data: Record<string, unknown> | null = null
+    let rawText: string | null = null
+    try {
+      data = JSON.parse(body)
+    } catch {
+      rawText = body
+    }
+    sections.push({ agentName: match[1].toLowerCase().replace(/_/g, ' '), data, rawText })
+  }
+  if (sections.length === 0) return null
+  const intro = content.split(/===\s+\w+\s+ASSESSMENT/)[0].trim()
+  return { intro, sections }
+}
+
+function parseJsonObject(content: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(content.trim())
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 // Parse structured output format
@@ -250,6 +336,82 @@ function parseStructuredOutput(content: string): Record<string, string | string[
   }
   
   return result
+}
+
+/**
+ * Evidence image gallery with lightbox.
+ * Shows thumbnails inline; click to view full-size in a dialog.
+ */
+function EvidenceGallery({ images }: { images: string[] }) {
+  const [selectedImage, setSelectedImage] = React.useState<{ src: string; label: string } | null>(null)
+
+  const IMAGE_EXTS = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i
+  const imageFiles = images.filter((p) => IMAGE_EXTS.test(p))
+  const otherFiles = images.filter((p) => !IMAGE_EXTS.test(p))
+
+  return (
+    <>
+      <div className="text-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <IconPhoto className="h-4 w-4 text-muted-foreground" />
+          <span className="text-muted-foreground">Submitted Evidence:</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {imageFiles.map((path, idx) => {
+            const filename = String(path).split('/').pop() || 'image'
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setSelectedImage({ src: path, label: filename })}
+                className="group relative rounded-lg overflow-hidden border bg-muted/30 hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
+              >
+                <img
+                  src={path}
+                  alt={filename}
+                  className="w-full h-24 object-cover"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                  <span className="text-white text-[10px] font-medium leading-tight block truncate">
+                    {filename}
+                  </span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        {otherFiles.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {otherFiles.map((path, idx) => (
+              <div key={idx} className="text-xs text-muted-foreground">
+                📎 {String(path).split('/').pop()}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        <DialogContent className="max-w-3xl p-2">
+          <DialogTitle className="sr-only">
+            {selectedImage?.label || "Evidence image"}
+          </DialogTitle>
+          {selectedImage && (
+            <div className="space-y-2">
+              <img
+                src={selectedImage.src}
+                alt={selectedImage.label}
+                className="w-full rounded-lg"
+              />
+              <p className="text-sm text-muted-foreground text-center px-2 pb-1">
+                {selectedImage.label}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 // Component: Formatted Claim Data
@@ -375,19 +537,7 @@ function ClaimDataDisplay({ claim }: { claim: Record<string, unknown> }) {
 
       {/* Supporting Images */}
       {claim.supporting_images && Array.isArray(claim.supporting_images) && claim.supporting_images.length > 0 ? (
-        <div className="text-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <IconPhoto className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Attached Files:</span>
-          </div>
-          <div className="pl-6 space-y-1">
-            {(claim.supporting_images as string[]).map((path, idx) => (
-              <div key={idx} className="text-xs text-muted-foreground">
-                📎 {String(path).split('/').pop()}
-              </div>
-            ))}
-          </div>
-        </div>
+        <EvidenceGallery images={claim.supporting_images as string[]} />
       ) : null}
     </div>
   )
@@ -466,8 +616,44 @@ function ToolResponsesDisplay({ responses }: { responses: Array<{ name: string; 
   )
 }
 
+// Agent name → display config
+const AGENT_DISPLAY: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
+  'claim assessor': { label: 'Claim Assessor', icon: IconFileText, color: 'text-blue-600 dark:text-blue-400' },
+  'policy checker': { label: 'Policy Checker', icon: IconShield, color: 'text-emerald-600 dark:text-emerald-400' },
+  'risk analyst': { label: 'Risk Analyst', icon: IconTrendingUp, color: 'text-amber-600 dark:text-amber-400' },
+}
+
+// Component: Synthesis Prompt (the "Based on assessments..." step)
+function SynthesisPromptDisplay({ intro, sections }: { intro: string; sections: SynthesisSection[] }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground italic">{intro}</p>
+      {sections.map((section, idx) => {
+        const agent = AGENT_DISPLAY[section.agentName] || { label: section.agentName, icon: IconFileText, color: 'text-gray-500' }
+        const Icon = agent.icon
+        return (
+          <Collapsible key={idx} defaultOpen={false}>
+            <CollapsibleTrigger className="flex items-center gap-2 w-full text-left p-2 rounded-md hover:bg-muted/50 transition-colors">
+              <Icon className={cn("h-4 w-4 shrink-0", agent.color)} />
+              <span className="text-sm font-medium">{agent.label}</span>
+              <IconChevronDown className="h-3.5 w-3.5 ml-auto text-muted-foreground transition-transform [[data-state=open]>&]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1 ml-6">
+              {section.data ? (
+                <StructuredOutputDisplay data={section.data} />
+              ) : (
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap">{section.rawText}</pre>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )
+      })}
+    </div>
+  )
+}
+
 // Component: Structured Output Display
-function StructuredOutputDisplay({ data }: { data: Record<string, string | string[]> }) {
+function StructuredOutputDisplay({ data }: { data: Record<string, unknown> }) {
   // Field display configuration
   const fieldConfig: Record<string, { label: string; type: 'status' | 'text' | 'list' }> = {
     validity_status: { label: 'Validity Status', type: 'status' },
@@ -527,7 +713,22 @@ function StructuredOutputDisplay({ data }: { data: Record<string, string | strin
           )
         }
         
-        if (config.type === 'list' && Array.isArray(value)) {
+        if (Array.isArray(value)) {
+          const isPrimitiveList = value.every(
+            (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+          )
+          if (!isPrimitiveList) {
+            return (
+              <div key={key}>
+                <div className="text-sm font-medium text-muted-foreground mb-1 capitalize">
+                  {config.label}
+                </div>
+                <pre className="text-xs rounded p-2 bg-background/60 border overflow-x-auto">
+                  {JSON.stringify(value, null, 2)}
+                </pre>
+              </div>
+            )
+          }
           return (
             <div key={key}>
               <div className="text-sm font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
@@ -544,10 +745,23 @@ function StructuredOutputDisplay({ data }: { data: Record<string, string | strin
                     "text-sm",
                     (key === 'red_flags' || key === 'fraud_indicators') && "text-red-700 dark:text-red-400"
                   )}>
-                    • {item}
+                    • {String(item)}
                   </li>
                 ))}
               </ul>
+            </div>
+          )
+        }
+
+        if (value && typeof value === 'object') {
+          return (
+            <div key={key}>
+              <div className="text-sm font-medium text-muted-foreground mb-1 capitalize">
+                {config.label}
+              </div>
+              <pre className="text-xs rounded p-2 bg-background/60 border overflow-x-auto">
+                {JSON.stringify(value, null, 2)}
+              </pre>
             </div>
           )
         }
@@ -577,9 +791,7 @@ export const ConversationStep = React.memo(function ConversationStep({
   const agentConfig = AGENT_CONFIG[nodeOrAgent]
   
   // Skip internal messages
-  if (step.content.includes('transfer_back_to_supervisor') || 
-      step.content.includes('"type": "tool_call"') ||
-      step.content.match(/\[.*"tool_call".*\]/)) {
+  if (step.content.includes('transfer_back_to_supervisor')) {
     return null
   }
 
@@ -587,8 +799,14 @@ export const ConversationStep = React.memo(function ConversationStep({
   const claimData = isUser && isClaimJson(step.content) ? parseClaimJson(step.content) : null
   const toolCalls = hasToolCalls(step.content) ? parseToolCalls(step.content) : null
   const toolResponses = hasToolResponses(step.content) ? parseToolResponses(step.content) : null
-  const structuredOutput = !claimData && !toolCalls && !toolResponses && isStructuredOutput(step.content) 
-    ? parseStructuredOutput(step.content) 
+  const synthesisPrompt = !claimData && !toolCalls && !toolResponses && isSynthesisPrompt(step.content)
+    ? parseSynthesisPrompt(step.content)
+    : null
+  const jsonOutput = !claimData && !toolCalls && !toolResponses && !synthesisPrompt && isJsonObject(step.content)
+    ? parseJsonObject(step.content)
+    : null
+  const structuredOutput = !claimData && !toolCalls && !toolResponses && !synthesisPrompt && !jsonOutput && isStructuredOutput(step.content)
+    ? parseStructuredOutput(step.content)
     : null
 
   return (
@@ -648,6 +866,10 @@ export const ConversationStep = React.memo(function ConversationStep({
                 <ToolCallsDisplay toolCalls={toolCalls} />
               ) : toolResponses ? (
                 <ToolResponsesDisplay responses={toolResponses} />
+              ) : synthesisPrompt ? (
+                <SynthesisPromptDisplay intro={synthesisPrompt.intro} sections={synthesisPrompt.sections} />
+              ) : jsonOutput ? (
+                <StructuredOutputDisplay data={jsonOutput} />
               ) : structuredOutput ? (
                 <StructuredOutputDisplay data={structuredOutput} />
               ) : (

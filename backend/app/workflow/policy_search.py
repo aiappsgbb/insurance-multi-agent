@@ -53,6 +53,7 @@ class PolicyVectorSearch:  # noqa: D101
     def _init_embeddings(self):
         try:
             from app.core.config import get_settings, get_token_provider
+
             settings = get_settings()
 
             self.embeddings = AzureOpenAIEmbeddings(

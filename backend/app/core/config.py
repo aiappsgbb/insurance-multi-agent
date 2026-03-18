@@ -24,7 +24,13 @@ except ImportError:
 
 
 class Settings(BaseSettings):  # noqa: D101
-    # Azure OpenAI
+    # PostgreSQL
+    database_url: str = Field(alias="DATABASE_URL")
+    database_pool_size: int = Field(default=5, alias="DATABASE_POOL_SIZE")
+    database_max_overflow: int = Field(default=10, alias="DATABASE_MAX_OVERFLOW")
+    test_database_url: str | None = Field(default=None, alias="TEST_DATABASE_URL")
+
+    # Azure OpenAI (auth via DefaultAzureCredential — no API key needed)
     azure_openai_endpoint: str | None = Field(
         default=None, alias="AZURE_OPENAI_ENDPOINT")
     azure_openai_deployment_name: str | None = Field(
@@ -35,6 +41,10 @@ class Settings(BaseSettings):  # noqa: D101
     # Entra ID – set AZURE_CLIENT_ID for user-assigned managed identity
     azure_client_id: str | None = Field(
         default=None, alias="AZURE_CLIENT_ID")
+
+    # Frontend (used to fetch demo evidence images for AI vision analysis)
+    frontend_origin: str | None = Field(
+        default=None, alias="FRONTEND_ORIGIN")
 
     # FastAPI
     app_name: str = "Insurance Multi-Agent Backend"
@@ -47,8 +57,10 @@ class Settings(BaseSettings):  # noqa: D101
     }
 
     def dict_safe(self) -> Dict[str, Any]:  # noqa: D401
-        """Serialise settings to a dict (no secrets to exclude)."""
-        return self.model_dump()
+        """Serialise settings to a dict, excluding sensitive DB URLs."""
+        return self.model_dump(
+            exclude={"database_url", "test_database_url"},
+        )
 
 
 @functools.lru_cache(maxsize=1)

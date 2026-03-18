@@ -1,8 +1,8 @@
 """Azure OpenAI chat client factory for Microsoft Agent Framework.
 
 Provides a centralized factory function to create AzureOpenAIChatClient
-instances configured from application settings.  Authentication is
-handled exclusively via Entra ID (``DefaultAzureCredential``).
+instances configured from application settings.  Authentication uses
+``DefaultAzureCredential`` (managed identity in Azure, ``az login`` locally).
 """
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ logger = logging.getLogger(__name__)
 def build_chat_client() -> AzureOpenAIChatClient:
     """Build and return an AzureOpenAIChatClient instance.
 
-    Uses ``DefaultAzureCredential`` for Entra ID authentication.
-    In Azure Container Apps this resolves to the user-assigned managed
-    identity; locally it falls back to ``az login`` credentials.
+    Uses ``DefaultAzureCredential`` which automatically selects the best
+    available credential: managed identity in Azure, ``az login`` locally.
 
     Returns:
         AzureOpenAIChatClient: Configured chat client for Azure OpenAI.
@@ -34,6 +33,7 @@ def build_chat_client() -> AzureOpenAIChatClient:
     logger.info("✅ Building Azure OpenAI chat client (Entra ID auth)")
     logger.info("   Endpoint: %s", endpoint or "Not set")
     logger.info("   Deployment: %s", deployment)
+    logger.info("   Auth: DefaultAzureCredential (managed identity / az login)")
 
     return AzureOpenAIChatClient(
         endpoint=endpoint,

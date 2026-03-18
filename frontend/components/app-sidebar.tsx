@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   IconDashboard,
   IconFileAi,
@@ -9,6 +10,7 @@ import {
   IconMoon,
   IconSun,
   IconUsers,
+  IconBriefcase
 } from "@tabler/icons-react"
 import { useTheme } from "next-themes"
 
@@ -60,6 +62,41 @@ const data = {
       title: "Live Dashboard",
       url: "/",
       icon: IconDashboard,
+    },
+    {
+      title: "Platform Story",
+      url: "/presentation",
+      icon: IconFileDescription,
+    },
+    {
+      title: "Queues",
+      url: "#",
+      icon: IconFileAi,
+      items: [
+        {
+          title: "Review Queue",
+          url: "/claims/queue",
+        },
+        {
+          title: "AI Processing Queue",
+          url: "/claims/processing-queue",
+        },
+        {
+          title: "Auto-Approvals",
+          url: "/claims/auto-approvals",
+        },
+      ],
+    },
+    {
+      title: "My Work",
+      url: "#",
+      icon: IconBriefcase,
+      items: [
+        {
+          title: "My Claims",
+          url: "/claims",
+        },
+      ],
     },
     {
       title: "Agent Demos",
@@ -120,10 +157,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
-              <a href="#">
+              <Link href="/">
                 <IconInnerShadowTop className="!size-5" />
                 <span className="text-base font-semibold">Contoso AI Claims</span>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

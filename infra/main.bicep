@@ -15,7 +15,7 @@ param frontendContainerImage string = 'mcr.microsoft.com/azuredocs/containerapps
 @description('The project name for resource naming')
 param projectName string = 'shadcn-fastapi'
 
-@description('Azure OpenAI endpoint URL')
+@description('Azure OpenAI endpoint URL (leave empty to use deployed Cognitive Services endpoint)')
 param azureOpenAIEndpoint string = ''
 
 @description('Azure OpenAI deployment name')
@@ -29,6 +29,16 @@ param azureOpenAIEmbeddingModel string = 'text-embedding-3-large'
 
 @description('Resource ID of the Azure OpenAI account for RBAC (e.g. /subscriptions/.../resourceGroups/.../providers/Microsoft.CognitiveServices/accounts/...)')
 param azureOpenAIResourceId string = ''
+
+@description('PostgreSQL administrator login')
+param postgresAdminLogin string
+
+@description('PostgreSQL administrator password')
+@secure()
+param postgresAdminPassword string
+
+@description('PostgreSQL application database name')
+param postgresDbName string = 'claims_app'
 
 // Generate a short unique suffix for resource naming
 var uniqueSuffix = take(uniqueString(resourceGroup().id), 6)
@@ -44,15 +54,26 @@ var commonTags = {
 // Simple, short resource names that stay within limits
 var containerAppsEnvironmentName = 'env-${uniqueSuffix}'
 var containerRegistryName = 'cr${uniqueSuffix}'
+var cognitiveServicesAccountName = 'oai-${uniqueSuffix}'
 var managedIdentityName = 'id-${uniqueSuffix}'
 var backendContainerAppName = 'backend-${uniqueSuffix}'
 var frontendContainerAppName = 'frontend-${uniqueSuffix}'
+var postgresServerName = 'pg-${uniqueSuffix}'
 
 // Create managed identity for container registry access
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
   location: location
   tags: commonTags
+}
+
+module network 'modules/network.bicep' = {
+  name: 'network'
+  params: {
+    location: location
+    tags: commonTags
+    resourceSuffix: uniqueSuffix
+  }
 }
 
 // Deploy container apps stack (environment + registry)
@@ -63,8 +84,22 @@ module containerAppsStack 'modules/container-apps-stack.bicep' = {
     containerRegistryName: containerRegistryName
     location: location
     tags: commonTags
-    projectName: projectName
     environmentName: environmentName
+    infrastructureSubnetId: network.outputs.containerAppsInfrastructureSubnetId
+  }
+}
+
+module postgresFlexibleServer 'modules/postgres-flexible-server.bicep' = {
+  name: 'postgres-flexible-server'
+  params: {
+    serverName: postgresServerName
+    databaseName: postgresDbName
+    location: location
+    tags: commonTags
+    administratorLogin: postgresAdminLogin
+    administratorPassword: postgresAdminPassword
+    delegatedSubnetId: network.outputs.postgresDelegatedSubnetId
+    privateDnsZoneId: network.outputs.privateDnsZoneId
   }
 }
 
@@ -74,12 +109,20 @@ module roleAssignment 'modules/role-assignment.bicep' = {
   params: {
     registryId: containerAppsStack.outputs.containerRegistryId
     managedIdentityPrincipalId: managedIdentity.properties.principalId
-    resourcePrefix: uniqueSuffix
   }
-  dependsOn: [
-    containerAppsStack
-    managedIdentity
-  ]
+}
+
+// Deploy Azure OpenAI (Cognitive Services)
+module cognitiveServices 'modules/cognitive-services.bicep' = {
+  name: 'cognitive-services'
+  params: {
+    accountName: cognitiveServicesAccountName
+    location: location
+    tags: commonTags
+    chatModelName: azureOpenAIDeploymentName
+    embeddingModelName: azureOpenAIEmbeddingModel
+    principalId: managedIdentity.properties.principalId
+  }
 }
 
 // Assign Cognitive Services OpenAI User role on the Azure OpenAI resource.
@@ -109,9 +152,7 @@ module backendContainerApp 'modules/containerapp.bicep' = {
     containerPort: 8000
     registryServer: containerAppsStack.outputs.containerRegistryLoginServer
     managedIdentityResourceId: managedIdentity.id
-    managedIdentityClientId: managedIdentity.properties.clientId
     tags: commonTags
-    resourcePrefix: uniqueSuffix
     environmentVariables: [
       {
         name: 'ENVIRONMENT'
@@ -123,7 +164,7 @@ module backendContainerApp 'modules/containerapp.bicep' = {
       }
       {
         name: 'AZURE_OPENAI_ENDPOINT'
-        value: azureOpenAIEndpoint
+        value: !empty(azureOpenAIEndpoint) ? azureOpenAIEndpoint : cognitiveServices.outputs.endpoint
       }
       {
         name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
@@ -141,12 +182,18 @@ module backendContainerApp 'modules/containerapp.bicep' = {
         name: 'AZURE_CLIENT_ID'
         value: managedIdentity.properties.clientId
       }
+      {
+        name: 'DATABASE_URL'
+        secretRef: 'database-url'
+      }
+    ]
+    secrets: [
+      {
+        name: 'database-url'
+        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${network.outputs.privateDnsZoneName}:5432/${postgresDbName}?ssl=require'
+      }
     ]
   }
-  dependsOn: [
-    containerAppsStack
-    roleAssignment
-  ]
 }
 
 // Deploy frontend container app
@@ -160,9 +207,7 @@ module frontendContainerApp 'modules/containerapp.bicep' = {
     containerPort: 3000
     registryServer: containerAppsStack.outputs.containerRegistryLoginServer
     managedIdentityResourceId: managedIdentity.id
-    managedIdentityClientId: managedIdentity.properties.clientId
     tags: commonTags
-    resourcePrefix: uniqueSuffix
     environmentVariables: [
       {
         name: 'API_URL'
@@ -170,11 +215,6 @@ module frontendContainerApp 'modules/containerapp.bicep' = {
       }
     ]
   }
-  dependsOn: [
-    containerAppsStack
-    roleAssignment
-    backendContainerApp
-  ]
 }
 
 // Outputs
@@ -184,4 +224,5 @@ output containerRegistryLoginServer string = containerAppsStack.outputs.containe
 output managedIdentityClientId string = managedIdentity.properties.clientId
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output resourceGroupName string = resourceGroup().name
-
+output postgresServerFqdn string = postgresFlexibleServer.outputs.serverFqdn
+output azureOpenAIEndpoint string = cognitiveServices.outputs.endpoint

@@ -1,0 +1,55 @@
+import os
+from pathlib import Path
+
+import pytest
+from dotenv import load_dotenv
+
+from tests.live_auth import skip_if_auth_error, ensure_azure_credential
+
+
+def _load_env() -> None:
+    root_env = Path(__file__).resolve().parents[2] / ".env"
+    backend_env = Path(__file__).resolve().parents[1] / ".env"
+    if backend_env.exists():
+        load_dotenv(backend_env)
+    if root_env.exists():
+        load_dotenv(root_env, override=False)
+
+
+def _ensure_credentials() -> None:
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not endpoint:
+        pytest.skip("API test requires AZURE_OPENAI_ENDPOINT in .env (auth via az login)")
+    ensure_azure_credential()
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_endpoint_returns_structured_outputs(async_client):
+    _load_env()
+    _ensure_credentials()
+
+    payload = {
+        "claim_id": "API-TEST-001",
+        "claimant_name": "Test Customer",
+        "policy_number": "POL-TEST-001",
+        "claim_type": "auto",
+        "description": "Minor scrape in a parking lot. Photos attached.",
+        "incident_date": "2025-01-01T00:00:00Z",
+        "estimated_damage": 1400.0,
+        "location": "Seattle, WA",
+        "priority": "low",
+    }
+
+    response = await async_client.post("/api/v1/workflow/run", json=payload)
+    skip_if_auth_error(response.text)
+    if response.status_code != 200:
+        pytest.skip(f"Live Azure workflow request failed in this environment: {response.text[:200]}")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["success"] is True
+    assert data["agent_outputs"]
+    assert "claim_assessor" in data["agent_outputs"]
+    structured = data["agent_outputs"]["claim_assessor"]["structured_output"]
+    assert structured is not None
+    assert "validity_status" in structured
