@@ -34,6 +34,16 @@ resource cluster 'Microsoft.DBforPostgreSQL/serverGroupsv2@2023-03-02-preview' =
   }
 }
 
+// Allow Azure services to connect (Container Apps, etc.)
+resource allowAzureServices 'Microsoft.DBforPostgreSQL/serverGroupsv2/firewallRules@2023-03-02-preview' = {
+  parent: cluster
+  name: 'AllowAllAzureServices'
+  properties: {
+    startIpAddress: '0.0.0.0'
+    endIpAddress: '0.0.0.0'
+  }
+}
+
 // Note: Cosmos DB for PostgreSQL does not support child database resources.
 // The application database must be created via a post-deployment SQL command:
 //   CREATE DATABASE ${databaseName};
