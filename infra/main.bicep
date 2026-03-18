@@ -31,7 +31,7 @@ param azureOpenAIEmbeddingModel string = 'text-embedding-3-large'
 param azureOpenAIResourceId string = ''
 
 @description('PostgreSQL administrator login')
-param postgresAdminLogin string
+param postgresAdminLogin string = 'pgadmin'
 
 @description('PostgreSQL administrator password')
 @secure()
@@ -39,6 +39,9 @@ param postgresAdminPassword string
 
 @description('PostgreSQL application database name')
 param postgresDbName string = 'claims_app'
+
+@description('Location override for PostgreSQL (some subscriptions restrict certain regions)')
+param postgresLocation string = 'eastus'
 
 // Generate a short unique suffix for resource naming
 var uniqueSuffix = take(uniqueString(resourceGroup().id), 6)
@@ -94,12 +97,10 @@ module postgresFlexibleServer 'modules/postgres-flexible-server.bicep' = {
   params: {
     serverName: postgresServerName
     databaseName: postgresDbName
-    location: location
+    location: postgresLocation
     tags: commonTags
     administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
-    delegatedSubnetId: network.outputs.postgresDelegatedSubnetId
-    privateDnsZoneId: network.outputs.privateDnsZoneId
   }
 }
 
@@ -112,8 +113,8 @@ module roleAssignment 'modules/role-assignment.bicep' = {
   }
 }
 
-// Deploy Azure OpenAI (Cognitive Services)
-module cognitiveServices 'modules/cognitive-services.bicep' = {
+// Deploy Azure OpenAI (Cognitive Services) — only when no existing endpoint is provided
+module cognitiveServices 'modules/cognitive-services.bicep' = if (empty(azureOpenAIEndpoint)) {
   name: 'cognitive-services'
   params: {
     accountName: cognitiveServicesAccountName
@@ -164,7 +165,7 @@ module backendContainerApp 'modules/containerapp.bicep' = {
       }
       {
         name: 'AZURE_OPENAI_ENDPOINT'
-        value: !empty(azureOpenAIEndpoint) ? azureOpenAIEndpoint : cognitiveServices.outputs.endpoint
+        value: azureOpenAIEndpoint
       }
       {
         name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
@@ -190,7 +191,7 @@ module backendContainerApp 'modules/containerapp.bicep' = {
     secrets: [
       {
         name: 'database-url'
-        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${network.outputs.privateDnsZoneName}:5432/${postgresDbName}?ssl=require'
+        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgresFlexibleServer.outputs.serverFqdn}:5432/${postgresDbName}?ssl=require'
       }
     ]
   }
@@ -225,4 +226,4 @@ output managedIdentityClientId string = managedIdentity.properties.clientId
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output resourceGroupName string = resourceGroup().name
 output postgresServerFqdn string = postgresFlexibleServer.outputs.serverFqdn
-output azureOpenAIEndpoint string = cognitiveServices.outputs.endpoint
+output azureOpenAIEndpoint string = azureOpenAIEndpoint

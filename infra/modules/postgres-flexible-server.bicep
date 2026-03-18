@@ -17,11 +17,11 @@ param administratorLogin string
 @secure()
 param administratorPassword string
 
-@description('The delegated subnet used for private networking')
-param delegatedSubnetId string
+@description('The delegated subnet used for private networking (optional)')
+param delegatedSubnetId string = ''
 
-@description('The private DNS zone resource ID used for PostgreSQL private access')
-param privateDnsZoneId string
+@description('The private DNS zone resource ID used for PostgreSQL private access (optional)')
+param privateDnsZoneId string = ''
 
 resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: serverName
@@ -46,10 +46,12 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' =
     highAvailability: {
       mode: 'Disabled'
     }
-    network: {
+    network: !empty(delegatedSubnetId) ? {
       delegatedSubnetResourceId: delegatedSubnetId
       privateDnsZoneArmResourceId: privateDnsZoneId
       publicNetworkAccess: 'Disabled'
+    } : {
+      publicNetworkAccess: 'Enabled'
     }
     storage: {
       autoGrow: 'Enabled'
